@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.local
+.env.*
+
+node_modules/
+.next/
+.turbo/
+.eslintcache
+.vercel/
+
+frontend/node_modules/
+frontend/.next/
+frontend/.turbo/
+frontend/.eslintcache
