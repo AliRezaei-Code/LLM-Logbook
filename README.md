@@ -17,6 +17,14 @@ A detailed collection of reports capturing the responses of various LLMs to dive
 - Navigate to the github pages URL - https://teknium1.github.io/LLM-Logbook
 - Dive in and witness the diverse responses.
 
+## Next.js UI (experimental) ⚡️
+
+- A dedicated Next.js app now lives in `frontend/` to explore the datasets without Gradio.
+- Install dependencies and start the dev server:
+  - `cd frontend && npm install`
+  - `npm run dev`
+- The UI reads JSON directly from `Raw_Data/`, so keep those files in place when running locally.
+
 ## Contributing 🤝
 
 Open-source projects thrive on collaboration. Your contributions can shape the future of **LLM-Logbook**. Here's how you can contribute:
