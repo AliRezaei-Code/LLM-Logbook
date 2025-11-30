@@ -4,15 +4,37 @@ import { getDatasetBySlug, listDatasetSummaries } from "@/lib/logbook";
 const formatNumber = (value: number) =>
   new Intl.NumberFormat("en-US").format(value);
 
-export default async function Home() {
+type SearchParams = {
+  q?: string;
+  format?: string;
+};
+
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const readParam = (key: keyof SearchParams) => {
+    if (!resolvedSearchParams) return undefined;
+    if (typeof (resolvedSearchParams as URLSearchParams).get === "function") {
+      return (resolvedSearchParams as URLSearchParams).get(key) ?? undefined;
+    }
+
+    const value = (resolvedSearchParams as Record<string, string | string[] | undefined>)[key];
+    return Array.isArray(value) ? value[0] : value;
+  };
+
+  const q = readParam("q") ?? "";
+  const format = readParam("format") ?? "all";
   const summaries = await listDatasetSummaries();
   const totalPrompts = summaries.reduce(
     (acc, dataset) => acc + dataset.totalPrompts,
     0,
   );
-  const promptFormats = new Set(
-    summaries.map((dataset) => dataset.promptFormat),
-  ).size;
+  const promptFormats = Array.from(
+    new Set(summaries.map((dataset) => dataset.promptFormat)),
+  );
   const temps = summaries
     .map((dataset) => dataset.temperature)
     .filter((value): value is number => typeof value === "number");
@@ -20,6 +42,17 @@ export default async function Home() {
   const tempRange = temps.length
     ? `${Math.min(...temps).toFixed(1)}–${Math.max(...temps).toFixed(1)}`
     : "n/a";
+
+  const filteredSummaries = summaries.filter((dataset) => {
+    const matchesFormat =
+      format === "all" || dataset.promptFormat.toLowerCase() === format;
+    const normalizedQuery = q.trim().toLowerCase();
+    if (!normalizedQuery) return matchesFormat;
+
+    const inLabel = dataset.label.toLowerCase().includes(normalizedQuery);
+    const inModel = dataset.modelName.toLowerCase().includes(normalizedQuery);
+    return matchesFormat && (inLabel || inModel);
+  });
 
   const featured = summaries[0]
     ? await getDatasetBySlug(summaries[0].slug)
@@ -71,7 +104,7 @@ export default async function Home() {
           {[
             { label: "Datasets", value: summaries.length },
             { label: "Prompts tracked", value: formatNumber(totalPrompts) },
-            { label: "Prompt formats", value: promptFormats || "n/a" },
+            { label: "Prompt formats", value: promptFormats.length || "n/a" },
             { label: "Temperature span", value: tempRange },
           ].map((stat) => (
             <div
@@ -106,8 +139,64 @@ export default async function Home() {
             </Link>
           </div>
 
+          <form className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg shadow-black/25 md:grid-cols-[2fr,1fr,auto]">
+            <label className="flex flex-col gap-1 text-sm text-slate-200">
+              <span className="text-xs uppercase tracking-wide text-slate-400">
+                Search datasets
+              </span>
+              <input
+                type="text"
+                name="q"
+                defaultValue={q}
+                placeholder="Filter by dataset or model name"
+                className="rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-sm text-slate-50 outline-none transition focus:border-amber-200/60 focus:bg-black/40"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm text-slate-200">
+              <span className="text-xs uppercase tracking-wide text-slate-400">
+                Prompt format
+              </span>
+              <select
+                name="format"
+                defaultValue={format}
+                className="rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-sm text-slate-50 outline-none transition focus:border-amber-200/60 focus:bg-black/40"
+              >
+                <option value="all">All formats</option>
+                {promptFormats.map((value) => (
+                  <option key={value} value={value.toLowerCase()}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex items-end gap-2">
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:translate-y-[-1px] hover:bg-sky-400"
+              >
+                Apply
+              </button>
+              <Link
+                href="/"
+                className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
+              >
+                Clear
+              </Link>
+            </div>
+          </form>
+
+          <div className="text-sm text-slate-300">
+            Showing{" "}
+            <span className="font-semibold text-slate-100">
+              {filteredSummaries.length}
+            </span>{" "}
+            of {summaries.length} datasets.
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
-            {summaries.map((dataset) => (
+            {filteredSummaries.map((dataset) => (
               <Link
                 key={dataset.slug}
                 href={`/datasets/${dataset.slug}`}
