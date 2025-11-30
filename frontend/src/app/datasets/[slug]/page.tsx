@@ -10,12 +10,22 @@ type Params = {
   slug: string;
 };
 
+type SearchParams = {
+  q?: string;
+  scope?: string;
+};
+
 export async function generateStaticParams() {
   return getDatasetChoices().map(({ slug }) => ({ slug }));
 }
 
-export async function generateMetadata({ params }: { params: Params }) {
-  const dataset = await getDatasetBySlug(params.slug).catch(() => null);
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<Params>;
+}) {
+  const { slug } = await params;
+  const dataset = await getDatasetBySlug(slug).catch(() => null);
 
   if (!dataset) {
     return { title: "Dataset not found | LLM Logbook" };
@@ -66,12 +76,46 @@ function ConversationEntry({
   );
 }
 
-export default async function DatasetPage({ params }: { params: Params }) {
-  const dataset = await getDatasetBySlug(params.slug).catch(() => null);
+export default async function DatasetPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<Params>;
+  searchParams: Promise<SearchParams>;
+}) {
+  const { slug } = await params;
+  const resolvedSearchParams = await searchParams;
+  const readParam = (key: keyof SearchParams) => {
+    if (!resolvedSearchParams) return undefined;
+    if (typeof (resolvedSearchParams as URLSearchParams).get === "function") {
+      return (resolvedSearchParams as URLSearchParams).get(key) ?? undefined;
+    }
+
+    const value = (resolvedSearchParams as Record<string, string | string[] | undefined>)[key];
+    return Array.isArray(value) ? value[0] : value;
+  };
+
+  const q = readParam("q") ?? "";
+  const scope = readParam("scope") ?? "instruction";
+  const dataset = await getDatasetBySlug(slug).catch(() => null);
 
   if (!dataset) {
     notFound();
   }
+
+  const normalizedQuery = q.trim().toLowerCase();
+  const filteredConversations = normalizedQuery
+    ? dataset.conversations.filter(({ instruction, output }) => {
+        const inInstruction = instruction
+          .toLowerCase()
+          .includes(normalizedQuery);
+        const inResponse = output.toLowerCase().includes(normalizedQuery);
+
+        if (scope === "response") return inResponse;
+        if (scope === "both") return inInstruction || inResponse;
+        return inInstruction;
+      })
+    : dataset.conversations;
 
   const parameterBadges = [
     { label: "Prompt format", value: dataset.promptFormat },
@@ -163,12 +207,71 @@ export default async function DatasetPage({ params }: { params: Params }) {
               </h2>
             </div>
             <span className="text-sm text-slate-300">
-              Click to expand a conversation
+              Filter by substring and expand to inspect responses
             </span>
           </div>
 
+          <form className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg shadow-black/25 sm:grid-cols-[2fr,1fr,auto]">
+            <label className="flex flex-col gap-1 text-sm text-slate-200">
+              <span className="text-xs uppercase tracking-wide text-slate-400">
+                Search
+              </span>
+              <input
+                type="text"
+                name="q"
+                defaultValue={q}
+                placeholder="Find text in prompts or responses"
+                className="rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-sm text-slate-50 outline-none transition focus:border-amber-200/60 focus:bg-black/40"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm text-slate-200">
+              <span className="text-xs uppercase tracking-wide text-slate-400">
+                Search scope
+              </span>
+              <select
+                name="scope"
+                defaultValue={scope}
+                className="rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-sm text-slate-50 outline-none transition focus:border-amber-200/60 focus:bg-black/40"
+              >
+                <option value="instruction">Instructions only</option>
+                <option value="response">Responses only</option>
+                <option value="both">Both</option>
+              </select>
+            </label>
+
+            <div className="flex items-end gap-2">
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:translate-y-[-1px] hover:bg-sky-400"
+              >
+                Apply filters
+              </button>
+              <Link
+                href={`/datasets/${dataset.slug}`}
+                className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
+              >
+                Clear
+              </Link>
+            </div>
+          </form>
+
+          <div className="text-sm text-slate-300">
+            Showing{" "}
+            <span className="font-semibold text-slate-100">
+              {filteredConversations.length}
+            </span>{" "}
+            of {dataset.totalPrompts} conversations.
+          </div>
+
           <div className="space-y-3">
-            {dataset.conversations.map((conversation, index) => (
+            {filteredConversations.length === 0 && (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+                No conversations match that filter.
+              </div>
+            )}
+
+            {filteredConversations.map((conversation, index) => (
               <ConversationEntry
                 key={`${dataset.slug}-${index}`}
                 conversation={conversation}
